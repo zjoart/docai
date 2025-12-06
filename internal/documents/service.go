@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,10 +44,6 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 	ext := filepath.Ext(filename)
 	objectName := fmt.Sprintf("%d_%s", time.Now().Unix(), filename)
 
-	if err := s.storage.UploadFile(ctx, objectName, bytes.NewReader(fileBytes), int64(len(fileBytes)), contentType); err != nil {
-		return nil, fmt.Errorf("failed to upload: %w", err)
-	}
-
 	var extractedText string
 	var err error
 	switch ext {
@@ -54,9 +51,19 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 		extractedText, err = extractor.ExtractTextFromPDF(bytes.NewReader(fileBytes), int64(len(fileBytes)))
 		if err != nil {
 			logger.Warn("Failed to extract text from PDF", logger.Merge(logger.Fields{"filename": filename}, logger.WithError(err)))
+			return nil, fmt.Errorf("failed to extract text from PDF/Image")
 		}
+
 	case ".txt":
 		extractedText = string(fileBytes)
+	}
+
+	if strings.TrimSpace(extractedText) == "" {
+		return nil, fmt.Errorf("upload rejected: no text could be extracted from document")
+	}
+
+	if err := s.storage.UploadFile(ctx, objectName, bytes.NewReader(fileBytes), int64(len(fileBytes)), contentType); err != nil {
+		return nil, fmt.Errorf("failed to upload: %w", err)
 	}
 
 	doc := &Document{
@@ -84,9 +91,10 @@ func (s *Service) AnalyzeDocument(ctx context.Context, id uuid.UUID) (*Document,
 		return nil, err
 	}
 
-	if doc.ExtractedText == "" {
-		logger.Warn("No text extracted for document", logger.Fields{"id": id})
-		return nil, fmt.Errorf("no extracted text available for analysis")
+	if strings.TrimSpace(doc.ExtractedText) == "" {
+		logger.Warn("Skipping analysis: No text extracted", logger.Fields{"id": id})
+
+		return doc, fmt.Errorf("analysis skipped: no text extracted from document (likely scanned PDF or image)")
 	}
 
 	result, err := s.analyzer.AnalyzeText(ctx, doc.ExtractedText)
