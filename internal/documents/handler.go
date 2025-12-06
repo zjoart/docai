@@ -13,6 +13,12 @@ type Handler struct {
 	service *Service
 }
 
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -20,31 +26,30 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, "Failed to parse form")
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "File is required", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, "File is required")
 		return
 	}
 
 	defer file.Close()
 
 	if header.Size > 5*1024*1024 {
-		http.Error(w, "File too large (max 5MB)", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, "File too large (max 5MB)")
 		return
 	}
 
 	doc, err := h.service.UploadDocument(r.Context(), header.Filename, file, header.Size, header.Header.Get("Content-Type"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(doc)
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
@@ -53,18 +58,17 @@ func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
 	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
 		logger.Error("Invalid file ID format", logger.Fields{"id": id})
-		http.Error(w, "Invalid file ID format", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, "Invalid file ID format")
 		return
 	}
 
 	doc, err := h.service.AnalyzeDocument(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(doc)
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) GetDocument(w http.ResponseWriter, r *http.Request) {
@@ -73,16 +77,15 @@ func (h *Handler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
 		logger.Error("Invalid file ID format", logger.Fields{"id": id})
-		http.Error(w, "Invalid file ID format", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, "Invalid file ID format")
 		return
 	}
 
 	doc, err := h.service.GetDocument(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(doc)
+	writeJSON(w, http.StatusOK, doc)
 }
