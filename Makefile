@@ -20,6 +20,10 @@ tidy: ## Tidy go.mod and go.sum
 	go mod tidy
 
 
+DB_INTERNAL_URL := $(subst localhost:5433,postgres:5432,$(strip $(DATABASE_URL)))
+MINIO_HOST_INT := minio:9000
+MINIO_URL_INT := http://$(MINIO_HOST_INT)
+
 docker-up: ## Start docker containers
 	docker-compose up -d
 
@@ -27,17 +31,21 @@ docker-down: ## Stop docker containers
 	docker-compose down -v
 
 migrate-up: ## Apply all up migrations
-	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" up
+	docker run --rm -v $(PWD)/$(MIGRATIONS_PATH):/migrations --network docai_default migrate/migrate \
+		-path=/migrations/ -database "$(DB_INTERNAL_URL)" up
 
 migrate-down: ## Apply all down migrations
-	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" down
+	docker run --rm -v $(PWD)/$(MIGRATIONS_PATH):/migrations --network docai_default migrate/migrate \
+		-path=/migrations/ -database "$(DB_INTERNAL_URL)" down
 
 migrate-force: ## Force migration version
-	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" force $(version)
+	docker run --rm -v $(PWD)/$(MIGRATIONS_PATH):/migrations --network docai_default migrate/migrate \
+		-path=/migrations/ -database "$(DB_INTERNAL_URL)" force $(version)
 
 fix-dirty: ## Fix dirty migration state
 	@echo "Checking for dirty migration state..."
-	@MIGRATION_OUTPUT=$$(migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" version 2>&1 || true); \
+	@MIGRATION_OUTPUT=$$(docker run --rm -v $(PWD)/$(MIGRATIONS_PATH):/migrations --network docai_default migrate/migrate \
+		-path=/migrations/ -database "$(DB_INTERNAL_URL)" version 2>&1 || true); \
 	echo "$$MIGRATION_OUTPUT"; \
 	if echo "$$MIGRATION_OUTPUT" | grep -q "dirty"; then \
 		VERSION=$$(echo "$$MIGRATION_OUTPUT" | grep -oE '^[0-9]+'); \
@@ -51,14 +59,12 @@ fix-dirty: ## Fix dirty migration state
 
 migrate-retry: fix-dirty migrate-up ## Retry migrations after fixing dirty state
 
-
 minio-setup: ## Configure MinIO bucket and policy
 	@echo "Setting up MinIO..."
-	@# Wait for MinIO to be ready
-	@until curl -s $(MINIO_ENDPOINT)/minio/health/live; do echo "Waiting for MinIO..."; sleep 2; done
-	@mc alias set myminio http://$(MINIO_ENDPOINT) $(MINIO_ACCESS_KEY) $(MINIO_SECRET_KEY)
-	@mc mb --ignore-existing myminio/$(MINIO_BUCKET)
-	@mc anonymous set public myminio/$(MINIO_BUCKET)
+	@docker run --rm --network docai_default --entrypoint /bin/sh minio/mc -c "\
+	until mc alias set myminio $(MINIO_URL_INT) $(strip $(MINIO_ACCESS_KEY)) $(strip $(MINIO_SECRET_KEY)); do echo 'Waiting for MinIO...'; sleep 1; done; \
+	mc mb --ignore-existing myminio/$(strip $(MINIO_BUCKET)); \
+	mc anonymous set public myminio/$(strip $(MINIO_BUCKET));"
 
 start-app: docker-up minio-setup migrate-retry run ## Start full stack and run app
 

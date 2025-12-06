@@ -28,7 +28,7 @@ Ensure you have the following installed on your local machine:
 
 We use a `Makefile` to orchestrate workflows.
 
-### Start the Application (Full Stack)
+### Start the Application
 ```bash
 make start-app
 ```
