@@ -49,11 +49,14 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 
 	var extractedText string
 	var err error
-	if ext == ".pdf" {
+	switch ext {
+	case ".pdf":
 		extractedText, err = extractor.ExtractTextFromPDF(bytes.NewReader(fileBytes), int64(len(fileBytes)))
 		if err != nil {
 			logger.Warn("Failed to extract text from PDF", logger.Merge(logger.Fields{"filename": filename}, logger.WithError(err)))
 		}
+	case ".txt":
+		extractedText = string(fileBytes)
 	}
 
 	doc := &Document{
