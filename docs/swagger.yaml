@@ -1,0 +1,111 @@
+openapi: 3.0.0
+info:
+  title: DocAI Service API
+  description: AI Document Summarization and Metadata Extraction Service
+  version: "1.0"
+servers:
+  - url: http://localhost:8080
+paths:
+  /documents/upload:
+    post:
+      summary: Upload a document
+      description: Uploads a PDF/DOCX file, extracts text, and returns the document ID.
+      tags:
+        - documents
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          description: Bad Request
+        '500':
+          description: Internal Server Error
+
+  /documents/{id}/analyze:
+    post:
+      summary: Analyze a document
+      description: Triggers LLM analysis for the document.
+      tags:
+        - documents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+
+  /documents/{id}:
+    get:
+      summary: Get document details
+      tags:
+        - documents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          description: Not Found
+
+components:
+  schemas:
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        content_type:
+          type: string
+        extracted_text:
+          type: string
+        summary:
+          type: string
+        doc_type:
+          type: string
+        metadata:
+          type: object
+        status:
+          type: string
+          enum: [uploaded, processed, analyzed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
