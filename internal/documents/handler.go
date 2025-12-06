@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/zjoart/docai/pkg/id"
+	"github.com/zjoart/docai/pkg/logger"
 )
 
 type Handler struct {
@@ -48,10 +49,11 @@ func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	idStr := vars["id"]
-	id, err := uuid.Parse(idStr)
+
+	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
-		http.Error(w, "Invalid UUID", http.StatusBadRequest)
+		logger.Error("Invalid file ID format", logger.Fields{"id": id})
+		http.Error(w, "Invalid file ID format", http.StatusBadRequest)
 		return
 	}
 
@@ -67,10 +69,11 @@ func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	idStr := vars["id"]
-	id, err := uuid.Parse(idStr)
+
+	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
-		http.Error(w, "Invalid UUID", http.StatusBadRequest)
+		logger.Error("Invalid file ID format", logger.Fields{"id": id})
+		http.Error(w, "Invalid file ID format", http.StatusBadRequest)
 		return
 	}
 
