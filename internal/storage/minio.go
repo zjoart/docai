@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 type Client struct {
 	minioClient *minio.Client
 	bucketName  string
+	endpoint    string
 }
 
 func NewMinioClient(endpoint, accessKey, secretKey, bucketName string) (*Client, error) {
@@ -28,10 +30,17 @@ func NewMinioClient(endpoint, accessKey, secretKey, bucketName string) (*Client,
 		return nil, err
 	}
 
-	return &Client{
+	client := &Client{
 		minioClient: minioClient,
 		bucketName:  bucketName,
-	}, nil
+		endpoint:    endpoint,
+	}
+
+	if err := client.EnsureBucket(context.Background()); err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func (c *Client) EnsureBucket(ctx context.Context) error {
@@ -53,14 +62,16 @@ func (c *Client) EnsureBucket(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) UploadFile(ctx context.Context, objectName string, reader io.Reader, size int64, contentType string) error {
+func (c *Client) UploadFile(ctx context.Context, objectName string, reader io.Reader, size int64, contentType string) (string, error) {
 	_, err := c.minioClient.PutObject(ctx, c.bucketName, objectName, reader, size, minio.PutObjectOptions{
 		ContentType: contentType,
 	})
 	if err != nil {
 		logger.Error("Failed to upload file", logger.Merge(logger.Fields{"bucket": c.bucketName, "object": objectName}, logger.WithError(err)))
+		return "", err
 	}
-	return err
+
+	return fmt.Sprintf("http://%s/%s/%s", c.endpoint, c.bucketName, objectName), nil
 }
 
 func (c *Client) GetFileURL(ctx context.Context, objectName string) (string, error) {
@@ -76,4 +87,8 @@ func (c *Client) GetFileURL(ctx context.Context, objectName string) (string, err
 
 func (c *Client) GetFileContent(ctx context.Context, objectName string) (io.ReadCloser, error) {
 	return c.minioClient.GetObject(ctx, c.bucketName, objectName, minio.GetObjectOptions{})
+}
+
+func (c *Client) DeleteFile(ctx context.Context, objectName string) error {
+	return c.minioClient.RemoveObject(ctx, c.bucketName, objectName, minio.RemoveObjectOptions{})
 }

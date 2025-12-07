@@ -1,10 +1,10 @@
-package integration_test
+package test_documents
 
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -12,38 +12,13 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
-	"github.com/zjoart/docai/internal/config"
-	"github.com/zjoart/docai/internal/database"
 	"github.com/zjoart/docai/internal/documents"
-	"github.com/zjoart/docai/internal/documents/analyzer"
-	"github.com/zjoart/docai/internal/storage"
 )
 
 func TestDOCXUploadFlow(t *testing.T) {
 
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	db, err := database.Connect(cfg.DBURL)
-	if err != nil {
-		t.Fatalf("DB connect failed: %v", err)
-	}
-
-	// clean db
-	db.Exec("DELETE FROM documents")
-
-	minioClient, err := storage.NewMinioClient(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket)
-	if err != nil {
-		t.Fatalf("Minio init failed: %v", err)
-	}
-
-	err = minioClient.EnsureBucket(context.Background())
-	if err != nil {
-		t.Fatalf("Failed to ensure bucket: %v", err)
-	}
+	env := SetupTestEnv(t)
+	r := env.Router
 
 	buf := new(bytes.Buffer)
 	zipWriter := zip.NewWriter(buf)
@@ -75,24 +50,17 @@ func TestDOCXUploadFlow(t *testing.T) {
 
 	zipWriter.Close()
 	docxBytes := buf.Bytes()
-
+	// Prepare multipart request
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.docx")
+	filename := fmt.Sprintf("test_%s.docx", uuid.New().String())
+	part, _ := writer.CreateFormFile("file", filename)
 	part.Write(docxBytes)
 	writer.Close()
 
 	req := httptest.NewRequest("POST", "/documents/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	w := httptest.NewRecorder()
-
-	repo := documents.NewRepository(db)
-	ai := analyzer.NewAnalyzer(cfg.OpenRouterAPIKey)
-	svc := documents.NewService(repo, minioClient, ai)
-	h := documents.NewHandler(svc)
-
-	r := mux.NewRouter()
-	documents.RegisterRoutes(r, h)
 
 	r.ServeHTTP(w, req)
 

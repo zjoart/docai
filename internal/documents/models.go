@@ -11,6 +11,7 @@ import (
 type Document struct {
 	ID            uuid.UUID       `gorm:"type:uuid;primary_key;" json:"id"`
 	Filename      string          `json:"filename"`
+	FileUrl       string          `json:"file_url"`
 	ContentType   string          `json:"content_type"`
 	StoragePath   string          `json:"-"`
 	ExtractedText string          `json:"extracted_text"`

@@ -1,8 +1,7 @@
-package integration_test
+package test_documents
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,56 +11,24 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
-	"github.com/zjoart/docai/internal/config"
-	"github.com/zjoart/docai/internal/database"
 	"github.com/zjoart/docai/internal/documents"
-	"github.com/zjoart/docai/internal/documents/analyzer"
-	"github.com/zjoart/docai/internal/storage"
 )
 
 func TestDocumentFlow(t *testing.T) {
 
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	db, err := database.Connect(cfg.DBURL)
-	if err != nil {
-		t.Fatalf("DB connect failed: %v", err)
-	}
-
-	// clean db
-	db.Exec("DELETE FROM documents")
-
-	minioClient, err := storage.NewMinioClient(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket)
-	if err != nil {
-		t.Fatalf("Minio init failed: %v", err)
-	}
-
-	err = minioClient.EnsureBucket(context.Background())
-	if err != nil {
-		t.Fatalf("Failed to ensure bucket: %v", err)
-	}
+	env := SetupTestEnv(t)
+	r := env.Router
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.txt")
+	filename := fmt.Sprintf("test_%s.txt", uuid.New().String())
+	part, _ := writer.CreateFormFile("file", filename)
 	part.Write([]byte("This is a test invoice. Date: 2023-10-27. Total: $500."))
 	writer.Close()
 
 	req := httptest.NewRequest("POST", "/documents/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	w := httptest.NewRecorder()
-
-	repo := documents.NewRepository(db)
-	ai := analyzer.NewAnalyzer(cfg.OpenRouterAPIKey)
-	svc := documents.NewService(repo, minioClient, ai)
-	h := documents.NewHandler(svc)
-
-	r := mux.NewRouter()
-	documents.RegisterRoutes(r, h)
 
 	r.ServeHTTP(w, req)
 
@@ -79,6 +46,37 @@ func TestDocumentFlow(t *testing.T) {
 	}
 
 	t.Logf("Uploaded Doc ID: %s", doc.ID)
+
+	if doc.FileUrl == "" {
+		t.Error("Expected FileUrl to be set")
+	}
+
+	{
+		bodyDup := new(bytes.Buffer)
+		writerDup := multipart.NewWriter(bodyDup)
+		partDup, _ := writerDup.CreateFormFile("file", filename) // Use same filename
+		partDup.Write([]byte("Duplicate content"))
+		writerDup.Close()
+
+		reqDup := httptest.NewRequest("POST", "/documents/upload", bodyDup)
+		reqDup.Header.Set("Content-Type", writerDup.FormDataContentType())
+		wDup := httptest.NewRecorder()
+
+		r.ServeHTTP(wDup, reqDup)
+
+		if wDup.Code != http.StatusOK {
+			t.Fatalf("Expected duplicate upload to return 200 OK, got %d. Body: %s", wDup.Code, wDup.Body.String())
+		}
+
+		var docDup documents.Document
+		if err := json.NewDecoder(wDup.Body).Decode(&docDup); err != nil {
+			t.Fatalf("Failed to decode duplicate response: %v", err)
+		}
+
+		if docDup.ID != doc.ID {
+			t.Errorf("Expected duplicate doc ID to match original %s, got %s", doc.ID, docDup.ID)
+		}
+	}
 
 	analyzeReq := httptest.NewRequest("POST", fmt.Sprintf("/documents/%s/analyze", doc.ID), nil)
 	analyzeW := httptest.NewRecorder()

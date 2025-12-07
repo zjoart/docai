@@ -1,6 +1,8 @@
 package documents
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -8,6 +10,8 @@ import (
 type Repository interface {
 	Create(doc *Document) error
 	FindByID(id uuid.UUID) (*Document, error)
+	FindByFilename(filename string) (*Document, error)
+	IsNotFoundError(err error) bool
 	Update(doc *Document) error
 }
 
@@ -29,6 +33,16 @@ func (r *repository) FindByID(id uuid.UUID) (*Document, error) {
 	return &doc, err
 }
 
+func (r *repository) FindByFilename(filename string) (*Document, error) {
+	var doc Document
+	err := r.db.First(&doc, "filename = ?", filename).Error
+	return &doc, err
+}
+
 func (r *repository) Update(doc *Document) error {
 	return r.db.Save(doc).Error
+}
+
+func (r *repository) IsNotFoundError(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }

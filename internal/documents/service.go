@@ -39,13 +39,22 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 		return nil, err
 	}
 
+	existingDoc, err := s.repo.FindByFilename(filename)
+	if err == nil {
+		logger.Info("Document already exists, returning existing record", logger.Fields{"filename": filename, "id": existingDoc.ID})
+		return existingDoc, nil
+	}
+
+	if !s.repo.IsNotFoundError(err) {
+		return nil, fmt.Errorf("failed to check for duplicates: %w", err)
+	}
+
 	fileBytes := buf.Bytes()
 
 	ext := filepath.Ext(filename)
 	objectName := fmt.Sprintf("%d_%s", time.Now().Unix(), filename)
 
 	var extractedText string
-	var err error
 	switch ext {
 	case ".pdf":
 		extractedText, err = extractor.ExtractTextFromPDF(bytes.NewReader(fileBytes), int64(len(fileBytes)))
@@ -69,7 +78,8 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 		return nil, fmt.Errorf("upload rejected: no text could be extracted from document")
 	}
 
-	if err := s.storage.UploadFile(ctx, objectName, bytes.NewReader(fileBytes), int64(len(fileBytes)), contentType); err != nil {
+	fileUrl, err := s.storage.UploadFile(ctx, objectName, bytes.NewReader(fileBytes), int64(len(fileBytes)), contentType)
+	if err != nil {
 		return nil, fmt.Errorf("failed to upload: %w", err)
 	}
 
@@ -77,12 +87,18 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 		Filename:      filename,
 		ContentType:   contentType,
 		StoragePath:   objectName,
+		FileUrl:       fileUrl,
 		ExtractedText: extractedText,
 		Status:        "uploaded",
 	}
 
 	if err := s.repo.Create(doc); err != nil {
 		logger.Error("Failed to create document record", logger.WithError(err))
+
+		//  delete file from storage
+		if delErr := s.storage.DeleteFile(ctx, objectName); delErr != nil {
+			logger.Error("Failed to delete orphaned file", logger.Merge(logger.Fields{"object": objectName}, logger.WithError(delErr)))
+		}
 		return nil, err
 	}
 

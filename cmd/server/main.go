@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 
@@ -29,10 +28,6 @@ func main() {
 	minioClient, err := storage.NewMinioClient(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket)
 	if err != nil {
 		log.Fatalf("Failed to init Minio: %v", err)
-	}
-
-	if err := minioClient.EnsureBucket(context.Background()); err != nil {
-		log.Fatalf("Failed to ensure bucket: %v", err)
 	}
 
 	aiAnalyzer := analyzer.NewAnalyzer(cfg.OpenRouterAPIKey)
