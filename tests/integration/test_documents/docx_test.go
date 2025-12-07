@@ -70,8 +70,14 @@ func TestDOCXUploadFlow(t *testing.T) {
 		t.Fatalf("Upload failed: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var doc documents.Document
-	json.NewDecoder(resp.Body).Decode(&doc)
+	var respData struct {
+		Message  string             `json:"message"`
+		Document documents.Document `json:"document"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	doc := respData.Document
 
 	if doc.ID == uuid.Nil {
 		t.Fatal("Expected valid ID")

@@ -38,8 +38,14 @@ func TestDocumentFlow(t *testing.T) {
 		t.Fatalf("Upload failed: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var doc documents.Document
-	json.NewDecoder(resp.Body).Decode(&doc)
+	var respData struct {
+		Message  string             `json:"message"`
+		Document documents.Document `json:"document"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	doc := respData.Document
 
 	if doc.ID == uuid.Nil {
 		t.Fatal("Expected valid ID")
@@ -68,10 +74,14 @@ func TestDocumentFlow(t *testing.T) {
 			t.Fatalf("Expected duplicate upload to return 200 OK, got %d. Body: %s", wDup.Code, wDup.Body.String())
 		}
 
-		var docDup documents.Document
-		if err := json.NewDecoder(wDup.Body).Decode(&docDup); err != nil {
+		var docDupResp struct {
+			Message  string             `json:"message"`
+			Document documents.Document `json:"document"`
+		}
+		if err := json.NewDecoder(wDup.Body).Decode(&docDupResp); err != nil {
 			t.Fatalf("Failed to decode duplicate response: %v", err)
 		}
+		docDup := docDupResp.Document
 
 		if docDup.ID != doc.ID {
 			t.Errorf("Expected duplicate doc ID to match original %s, got %s", doc.ID, docDup.ID)
