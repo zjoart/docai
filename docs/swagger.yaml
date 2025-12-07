@@ -9,7 +9,7 @@ paths:
   /documents/upload:
     post:
       summary: Upload a document
-      description: Uploads a PDF/DOCX file, extracts text, and returns the document ID.
+      description: Uploads a document (PDF, DOCX, or TXT), extracts text, and returns the document ID.
       tags:
         - documents
       requestBody:
@@ -21,6 +21,7 @@ paths:
                 file:
                   type: string
                   format: binary
+                  description: "File to upload (Allowed: .pdf, .docx, .txt)"
                 processImmediately:
                   type: boolean
                   description: "If true, analysis starts immediately in background"

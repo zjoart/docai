@@ -46,7 +46,7 @@ func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	ext := filepath.Ext(header.Filename)
 	if ext != ".pdf" && ext != ".txt" && ext != ".docx" {
-		writeErrorJSON(w, http.StatusBadRequest, "File type not supported")
+		writeErrorJSON(w, http.StatusBadRequest, "File type not supported. Allowed types: .pdf, .docx, .txt")
 		return
 	}
 
