@@ -144,3 +144,12 @@ func (s *Service) GetDocument(ctx context.Context, id uuid.UUID) (*Document, err
 
 	return s.repo.FindByID(id)
 }
+
+func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	doc, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	doc.Status = status
+	return s.repo.Update(doc)
+}

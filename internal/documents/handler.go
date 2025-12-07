@@ -1,8 +1,10 @@
 package documents
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 
 	"github.com/gorilla/mux"
 	"github.com/zjoart/docai/pkg/id"
@@ -19,6 +21,10 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+func writeErrorJSON(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"message": message})
+}
+
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -26,30 +32,60 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, "Failed to parse form")
+		writeErrorJSON(w, http.StatusBadRequest, "Failed to parse form")
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, "File is required")
+		writeErrorJSON(w, http.StatusBadRequest, "File is required")
 		return
 	}
 
 	defer file.Close()
 
+	ext := filepath.Ext(header.Filename)
+	if ext != ".pdf" && ext != ".txt" && ext != ".docx" {
+		writeErrorJSON(w, http.StatusBadRequest, "File type not supported")
+		return
+	}
+
 	if header.Size > 5*1024*1024 {
-		writeJSON(w, http.StatusBadRequest, "File too large (max 5MB)")
+		writeErrorJSON(w, http.StatusBadRequest, "File too large (max 5MB)")
 		return
 	}
 
 	doc, err := h.service.UploadDocument(r.Context(), header.Filename, file, header.Size, header.Header.Get("Content-Type"))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, err.Error())
+		writeErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, doc)
+	processImmediately := r.FormValue("processImmediately") == "true"
+	message := "Document uploaded successfully"
+
+	if processImmediately {
+
+		if err := h.service.UpdateStatus(r.Context(), doc.ID, "processing"); err != nil {
+			logger.Error("Failed to update status to processing", logger.WithError(err))
+
+		} else {
+			doc.Status = "processing"
+			message = "Document uploaded and analysis started"
+
+			go func() {
+
+				if _, err := h.service.AnalyzeDocument(context.Background(), doc.ID); err != nil {
+					logger.Error("Background analysis failed", logger.WithError(err))
+				}
+			}()
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message":  message,
+		"document": doc,
+	})
 }
 
 func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
@@ -58,13 +94,24 @@ func (h *Handler) AnalyzeDocument(w http.ResponseWriter, r *http.Request) {
 	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
 		logger.Error("Invalid file ID format", logger.Fields{"id": id})
-		writeJSON(w, http.StatusBadRequest, "Invalid file ID format")
+		writeErrorJSON(w, http.StatusBadRequest, "Invalid file ID format")
+		return
+	}
+
+	currentDoc, err := h.service.GetDocument(r.Context(), id)
+	if err != nil {
+		writeErrorJSON(w, http.StatusNotFound, "Document not found")
+		return
+	}
+
+	if currentDoc.Status == "processing" {
+		writeErrorJSON(w, http.StatusConflict, "Document is already being processed")
 		return
 	}
 
 	doc, err := h.service.AnalyzeDocument(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, err.Error())
+		writeErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -77,13 +124,13 @@ func (h *Handler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	id, err := id.IsValidUUID(vars["id"])
 	if err != nil {
 		logger.Error("Invalid file ID format", logger.Fields{"id": id})
-		writeJSON(w, http.StatusBadRequest, "Invalid file ID format")
+		writeErrorJSON(w, http.StatusBadRequest, "Invalid file ID format")
 		return
 	}
 
 	doc, err := h.service.GetDocument(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, err.Error())
+		writeErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
