@@ -77,10 +77,11 @@ test: ## Run all tests
 test-force: ## Run tests without caching
 	go test -count=1 ./... 
 
-test-race: ## Run tests with race condition detection
-	go test -race ./...
+test-ci: ## Run tests with both race detection and coverage (used in CI)
+	go test -race -coverprofile=coverage.out ./... 	
+	go tool cover -func=coverage.out
 
 test-log: ## Run all tests in the project, including showing logs
 	go test -v ./... 
 
-.PHONY: test test-force test-race run tidy help clean test-log docker-up docker-down migrate-up migrate-down migrate-force fix-dirty migrate-retry minio-setup start-app 
+.PHONY: test test-force test-ci run tidy help clean test-log docker-up docker-down migrate-up migrate-down migrate-force fix-dirty migrate-retry minio-setup start-app 
