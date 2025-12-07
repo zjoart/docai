@@ -1,0 +1,68 @@
+name: Go Test CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      APP_ENV: ${{ secrets.APP_ENV }}
+      PORT: ${{ secrets.PORT }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+      MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+      MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPEN_ROUTER_KEY }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create .env file
+      run: |
+        echo "APP_ENV=$APP_ENV" >> .env
+        echo "PORT=$PORT" >> .env
+        echo "DATABASE_URL=$DATABASE_URL" >> .env
+        echo "MINIO_ENDPOINT=$MINIO_ENDPOINT" >> .env
+        echo "MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY" >> .env
+        echo "MINIO_SECRET_KEY=$MINIO_SECRET_KEY" >> .env
+        echo "MINIO_BUCKET=$MINIO_BUCKET" >> .env
+        echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" >> .env
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.2'
+        cache: true
+
+    - name: Cache Docker images
+      uses: ScribeMD/docker-cache@0.5.0
+      with:
+        key: docker-${{ runner.os }}-${{ hashFiles('docker-compose.yml') }}
+
+
+    - name: Start Docker Services
+      run: docker compose -p docai up -d --wait
+
+    - name: Setup MinIO
+      run: make minio-setup
+
+    - name: Run Migrations
+      run: make migrate-up
+
+    - name: Run Tests
+      run: make test-ci
+
+    - name: Upload Test Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs
+        path: |
+          *.log
+          *.out
