@@ -54,6 +54,13 @@ func (s *Service) UploadDocument(ctx context.Context, filename string, reader io
 			return nil, fmt.Errorf("failed to extract text from PDF/Image")
 		}
 
+	case ".docx":
+		extractedText, err = extractor.ExtractTextFromDOCX(bytes.NewReader(fileBytes), int64(len(fileBytes)))
+		if err != nil {
+			logger.Warn("Failed to extract text from DOCX", logger.Merge(logger.Fields{"filename": filename}, logger.WithError(err)))
+			return nil, fmt.Errorf("failed to extract text from DOCX: %w", err)
+		}
+
 	case ".txt":
 		extractedText = string(fileBytes)
 	}
