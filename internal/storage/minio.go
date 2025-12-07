@@ -21,7 +21,7 @@ func NewMinioClient(endpoint, accessKey, secretKey, bucketName string) (*Client,
 
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:        credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure:       false, // Assuming non-SSL for local docker
+		Secure:       false,
 		BucketLookup: minio.BucketLookupPath,
 	})
 
